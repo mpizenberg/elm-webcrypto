@@ -1,0 +1,6 @@
+{
+  "name": "elm-webcrypto",
+  "version": "1.0.0",
+  "main": "js/src/index.js",
+  "type": "module"
+}
