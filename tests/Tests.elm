@@ -183,6 +183,7 @@ encryptedDataCodecTests =
         [ test "round-trip" <|
             \_ ->
                 let
+                    data : Symmetric.EncryptedData
                     data =
                         { ciphertext = "Y2lwaGVydGV4dA==", iv = "aXY=" }
                 in
@@ -197,6 +198,7 @@ encryptedDataCodecTests =
         , test "encoder produces correct fields" <|
             \_ ->
                 let
+                    encoded : Decode.Value
                     encoded =
                         Symmetric.encodeEncryptedData { ciphertext = "ct", iv = "iv" }
                 in
@@ -227,6 +229,7 @@ keyPairTests =
         [ test "round-trip" <|
             \_ ->
                 let
+                    skp : KeyPair.SerializedKeyPair
                     skp =
                         { publicKey = "pub"
                         , privateKey = "priv"
@@ -258,6 +261,7 @@ serializedKeyPairCodecTests =
         [ test "round-trip" <|
             \_ ->
                 let
+                    skp : KeyPair.SerializedKeyPair
                     skp =
                         { publicKey = "{\"kty\":\"EC\"}"
                         , privateKey = "{\"kty\":\"EC\",\"d\":\"...\"}"
@@ -285,6 +289,7 @@ signingKeyPairTests =
         [ test "round-trip" <|
             \_ ->
                 let
+                    skp : Signature.SerializedSigningKeyPair
                     skp =
                         { publicKey = "pub"
                         , privateKey = "priv"
@@ -306,6 +311,7 @@ serializedSigningKeyPairCodecTests =
         [ test "round-trip" <|
             \_ ->
                 let
+                    skp : Signature.SerializedSigningKeyPair
                     skp =
                         { publicKey = "{\"kty\":\"EC\"}"
                         , privateKey = "{\"kty\":\"EC\",\"d\":\"...\"}"
@@ -359,6 +365,7 @@ solutionEncoderTests =
         [ test "encodes all fields with correct names" <|
             \_ ->
                 let
+                    solution : PoW.Solution
                     solution =
                         { pow_challenge = "abc"
                         , pow_timestamp = 1700000000
@@ -367,6 +374,7 @@ solutionEncoderTests =
                         , pow_solution = "42"
                         }
 
+                    encoded : Decode.Value
                     encoded =
                         PoW.encodeSolution solution
                 in
@@ -378,6 +386,7 @@ solutionEncoderTests =
         , test "round-trip through JSON" <|
             \_ ->
                 let
+                    solution : PoW.Solution
                     solution =
                         { pow_challenge = "test"
                         , pow_timestamp = 123
@@ -386,6 +395,7 @@ solutionEncoderTests =
                         , pow_solution = "99"
                         }
 
+                    decoder : Decode.Decoder PoW.Solution
                     decoder =
                         Decode.map5
                             (\c t d s n ->

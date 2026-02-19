@@ -111,6 +111,7 @@ deriveSharedKey :
     -> ConcurrentTask WebCrypto.Error Symmetric.Key
 deriveSharedKey { myKeyPair, otherPublicKey } =
     let
+        skp : SerializedKeyPair
         skp =
             exportKeyPair myKeyPair
     in

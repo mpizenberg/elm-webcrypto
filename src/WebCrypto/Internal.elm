@@ -16,6 +16,7 @@ import Bytes.Encode
 stringToBytes : String -> List Int
 stringToBytes str =
     let
+        encoded : Bytes.Bytes
         encoded =
             Bytes.Encode.encode (Bytes.Encode.string str)
     in
@@ -29,6 +30,7 @@ Returns Nothing if the bytes are not valid UTF-8.
 bytesToString : List Int -> Maybe String
 bytesToString ints =
     let
+        encoded : Bytes.Bytes
         encoded =
             Bytes.Encode.encode
                 (Bytes.Encode.sequence (List.map Bytes.Encode.unsignedInt8 ints))

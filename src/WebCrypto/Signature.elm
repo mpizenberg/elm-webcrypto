@@ -95,6 +95,7 @@ importSigningKeyPair =
 sign : SigningKeyPair -> List Int -> ConcurrentTask WebCrypto.Error String
 sign skp data =
     let
+        serialized : SerializedSigningKeyPair
         serialized =
             exportSigningKeyPair skp
     in
