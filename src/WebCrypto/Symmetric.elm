@@ -1,5 +1,5 @@
 module WebCrypto.Symmetric exposing
-    ( Key, keyDecoder, EncryptedData
+    ( Key, keyDecoder, EncryptedData, encryptedDataDecoder, encodeEncryptedData
     , generateKey, exportKey, importKey
     , encrypt, decrypt
     , encryptString, decryptString
@@ -11,7 +11,7 @@ module WebCrypto.Symmetric exposing
 
 # Types
 
-@docs Key, keyDecoder, EncryptedData
+@docs Key, keyDecoder, EncryptedData, encryptedDataDecoder, encodeEncryptedData
 
 
 # Key Management
@@ -39,6 +39,7 @@ import ConcurrentTask exposing (ConcurrentTask)
 import Json.Decode as Decode
 import Json.Encode as Encode
 import WebCrypto
+import WebCrypto.Internal as Internal
 
 
 {-| Opaque handle to an AES-256-GCM key stored in JS.
@@ -57,11 +58,23 @@ type alias EncryptedData =
     }
 
 
+{-| JSON decoder for encrypted data.
+-}
 encryptedDataDecoder : Decode.Decoder EncryptedData
 encryptedDataDecoder =
     Decode.map2 EncryptedData
         (Decode.field "ciphertext" Decode.string)
         (Decode.field "iv" Decode.string)
+
+
+{-| JSON encoder for encrypted data.
+-}
+encodeEncryptedData : EncryptedData -> Encode.Value
+encodeEncryptedData data =
+    Encode.object
+        [ ( "ciphertext", Encode.string data.ciphertext )
+        , ( "iv", Encode.string data.iv )
+        ]
 
 
 {-| JSON decoder for a symmetric key handle.
@@ -128,49 +141,30 @@ decrypt key encrypted =
 -}
 encryptString : Key -> String -> ConcurrentTask WebCrypto.Error EncryptedData
 encryptString key plaintext =
-    ConcurrentTask.define
-        { function = "webcrypto:sym:encryptString"
-        , expect = ConcurrentTask.expectJson encryptedDataDecoder
-        , errors = ConcurrentTask.expectErrors WebCrypto.errorDecoder
-        , args =
-            Encode.object
-                [ ( "keyId", Encode.string (keyIdOf key) )
-                , ( "plaintext", Encode.string plaintext )
-                ]
-        }
+    encrypt key (Internal.stringToBytes plaintext)
 
 
 {-| Decrypt to a string. Decodes UTF-8 after decryption.
 -}
 decryptString : Key -> EncryptedData -> ConcurrentTask WebCrypto.Error String
 decryptString key encrypted =
-    ConcurrentTask.define
-        { function = "webcrypto:sym:decryptString"
-        , expect = ConcurrentTask.expectString
-        , errors = ConcurrentTask.expectErrors WebCrypto.errorDecoder
-        , args =
-            Encode.object
-                [ ( "keyId", Encode.string (keyIdOf key) )
-                , ( "ciphertext", Encode.string encrypted.ciphertext )
-                , ( "iv", Encode.string encrypted.iv )
-                ]
-        }
+    decrypt key encrypted
+        |> ConcurrentTask.andThen
+            (\bytes ->
+                case Internal.bytesToString bytes of
+                    Just str ->
+                        ConcurrentTask.succeed str
+
+                    Nothing ->
+                        ConcurrentTask.fail (WebCrypto.DecryptionFailed "Invalid UTF-8 in decrypted data")
+            )
 
 
 {-| Encrypt a JSON value. Serializes to JSON string, then encrypts.
 -}
 encryptJson : Key -> Encode.Value -> ConcurrentTask WebCrypto.Error EncryptedData
 encryptJson key json =
-    ConcurrentTask.define
-        { function = "webcrypto:sym:encryptJson"
-        , expect = ConcurrentTask.expectJson encryptedDataDecoder
-        , errors = ConcurrentTask.expectErrors WebCrypto.errorDecoder
-        , args =
-            Encode.object
-                [ ( "keyId", Encode.string (keyIdOf key) )
-                , ( "json", json )
-                ]
-        }
+    encryptString key (Encode.encode 0 json)
 
 
 {-| Decrypt a JSON value. Decrypts, then parses JSON.
@@ -178,17 +172,16 @@ Uses the provided decoder to produce a typed value.
 -}
 decryptJson : Key -> Decode.Decoder a -> EncryptedData -> ConcurrentTask WebCrypto.Error a
 decryptJson key decoder encrypted =
-    ConcurrentTask.define
-        { function = "webcrypto:sym:decryptJson"
-        , expect = ConcurrentTask.expectJson decoder
-        , errors = ConcurrentTask.expectErrors WebCrypto.errorDecoder
-        , args =
-            Encode.object
-                [ ( "keyId", Encode.string (keyIdOf key) )
-                , ( "ciphertext", Encode.string encrypted.ciphertext )
-                , ( "iv", Encode.string encrypted.iv )
-                ]
-        }
+    decryptString key encrypted
+        |> ConcurrentTask.andThen
+            (\jsonStr ->
+                case Decode.decodeString decoder jsonStr of
+                    Ok val ->
+                        ConcurrentTask.succeed val
+
+                    Err err ->
+                        ConcurrentTask.fail (WebCrypto.DecryptionFailed ("JSON decode error: " ++ Decode.errorToString err))
+            )
 
 
 {-| Export a key to a Base64 string for storage (e.g. in IndexedDB).

@@ -1,5 +1,6 @@
 module WebCrypto.ProofOfWork exposing
-    ( Challenge, Solution
+    ( Challenge, challengeDecoder
+    , Solution, encodeSolution
     , solveChallenge
     )
 
@@ -10,7 +11,7 @@ Runs the brute force loop in a Web Worker to avoid blocking the UI thread.
 
 # Types
 
-@docs Challenge, Solution
+@docs Challenge, challengeDecoder, Solution, encodeSolution
 
 
 # Solving
@@ -35,6 +36,17 @@ type alias Challenge =
     }
 
 
+{-| JSON decoder for a PoW challenge from the server.
+-}
+challengeDecoder : Decode.Decoder Challenge
+challengeDecoder =
+    Decode.map4 Challenge
+        (Decode.field "challenge" Decode.string)
+        (Decode.field "timestamp" Decode.int)
+        (Decode.field "difficulty" Decode.int)
+        (Decode.field "signature" Decode.string)
+
+
 {-| A solved Proof-of-Work challenge, ready to send back to the server.
 -}
 type alias Solution =
@@ -44,6 +56,19 @@ type alias Solution =
     , pow_signature : String
     , pow_solution : String
     }
+
+
+{-| JSON encoder for a PoW solution to send to the server.
+-}
+encodeSolution : Solution -> Encode.Value
+encodeSolution sol =
+    Encode.object
+        [ ( "pow_challenge", Encode.string sol.pow_challenge )
+        , ( "pow_timestamp", Encode.int sol.pow_timestamp )
+        , ( "pow_difficulty", Encode.int sol.pow_difficulty )
+        , ( "pow_signature", Encode.string sol.pow_signature )
+        , ( "pow_solution", Encode.string sol.pow_solution )
+        ]
 
 
 {-| Solve a Proof-of-Work challenge.

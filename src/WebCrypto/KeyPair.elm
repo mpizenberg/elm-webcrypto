@@ -1,5 +1,5 @@
 module WebCrypto.KeyPair exposing
-    ( KeyPair, SerializedKeyPair
+    ( KeyPair, SerializedKeyPair, serializedKeyPairDecoder, encodeSerializedKeyPair
     , generateKeyPair, exportKeyPair, importKeyPair, importPublicKey
     , publicKeyHash, deriveSharedKey
     )
@@ -9,7 +9,7 @@ module WebCrypto.KeyPair exposing
 
 # Types
 
-@docs KeyPair, SerializedKeyPair
+@docs KeyPair, SerializedKeyPair, serializedKeyPairDecoder, encodeSerializedKeyPair
 
 
 # Key Management
@@ -45,6 +45,27 @@ type alias SerializedKeyPair =
     }
 
 
+{-| JSON decoder for a serialized key pair.
+-}
+serializedKeyPairDecoder : Decode.Decoder SerializedKeyPair
+serializedKeyPairDecoder =
+    Decode.map3 SerializedKeyPair
+        (Decode.field "publicKey" Decode.string)
+        (Decode.field "privateKey" Decode.string)
+        (Decode.field "publicKeyHash" Decode.string)
+
+
+{-| JSON encoder for a serialized key pair.
+-}
+encodeSerializedKeyPair : SerializedKeyPair -> Encode.Value
+encodeSerializedKeyPair skp =
+    Encode.object
+        [ ( "publicKey", Encode.string skp.publicKey )
+        , ( "privateKey", Encode.string skp.privateKey )
+        , ( "publicKeyHash", Encode.string skp.publicKeyHash )
+        ]
+
+
 keypairIdOf : KeyPair -> String
 keypairIdOf (KeyPair id) =
     id
@@ -68,13 +89,7 @@ exportKeyPair : KeyPair -> ConcurrentTask WebCrypto.Error SerializedKeyPair
 exportKeyPair kp =
     ConcurrentTask.define
         { function = "webcrypto:kp:export"
-        , expect =
-            ConcurrentTask.expectJson
-                (Decode.map3 SerializedKeyPair
-                    (Decode.field "publicKey" Decode.string)
-                    (Decode.field "privateKey" Decode.string)
-                    (Decode.field "publicKeyHash" Decode.string)
-                )
+        , expect = ConcurrentTask.expectJson serializedKeyPairDecoder
         , errors = ConcurrentTask.expectErrors WebCrypto.errorDecoder
         , args =
             Encode.object

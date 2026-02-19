@@ -51,11 +51,10 @@ export function createTasks() {
 
     "webcrypto:sha256hex": async ({ data }) => {
       try {
-        const bytes =
-          typeof data === "string"
-            ? new TextEncoder().encode(data)
-            : new Uint8Array(data);
-        const hashBuffer = await crypto.subtle.digest("SHA-256", bytes);
+        const hashBuffer = await crypto.subtle.digest(
+          "SHA-256",
+          new Uint8Array(data),
+        );
         return Array.from(new Uint8Array(hashBuffer))
           .map((b) => b.toString(16).padStart(2, "0"))
           .join("");
@@ -105,76 +104,6 @@ export function createTasks() {
           fromBase64(ciphertext),
         );
         return Array.from(new Uint8Array(decrypted));
-      } catch (e) {
-        return { error: "DECRYPTION_FAILED:Invalid key or corrupted data" };
-      }
-    },
-
-    "webcrypto:sym:encryptString": async ({ keyId, plaintext }) => {
-      const key = getKey(keyId);
-      if (key.error) return key;
-      try {
-        const iv = crypto.getRandomValues(new Uint8Array(12));
-        const data = new TextEncoder().encode(plaintext);
-        const ciphertextBuffer = await crypto.subtle.encrypt(
-          { name: "AES-GCM", iv },
-          key,
-          data,
-        );
-        return {
-          ciphertext: toBase64(new Uint8Array(ciphertextBuffer)),
-          iv: toBase64(iv),
-        };
-      } catch (e) {
-        return { error: "ENCRYPTION_FAILED:" + e.message };
-      }
-    },
-
-    "webcrypto:sym:decryptString": async ({ keyId, ciphertext, iv }) => {
-      const key = getKey(keyId);
-      if (key.error) return key;
-      try {
-        const decrypted = await crypto.subtle.decrypt(
-          { name: "AES-GCM", iv: fromBase64(iv) },
-          key,
-          fromBase64(ciphertext),
-        );
-        return new TextDecoder().decode(decrypted);
-      } catch (e) {
-        return { error: "DECRYPTION_FAILED:Invalid key or corrupted data" };
-      }
-    },
-
-    "webcrypto:sym:encryptJson": async ({ keyId, json }) => {
-      const key = getKey(keyId);
-      if (key.error) return key;
-      try {
-        const iv = crypto.getRandomValues(new Uint8Array(12));
-        const data = new TextEncoder().encode(JSON.stringify(json));
-        const ciphertextBuffer = await crypto.subtle.encrypt(
-          { name: "AES-GCM", iv },
-          key,
-          data,
-        );
-        return {
-          ciphertext: toBase64(new Uint8Array(ciphertextBuffer)),
-          iv: toBase64(iv),
-        };
-      } catch (e) {
-        return { error: "ENCRYPTION_FAILED:" + e.message };
-      }
-    },
-
-    "webcrypto:sym:decryptJson": async ({ keyId, ciphertext, iv }) => {
-      const key = getKey(keyId);
-      if (key.error) return key;
-      try {
-        const decrypted = await crypto.subtle.decrypt(
-          { name: "AES-GCM", iv: fromBase64(iv) },
-          key,
-          fromBase64(ciphertext),
-        );
-        return JSON.parse(new TextDecoder().decode(decrypted));
       } catch (e) {
         return { error: "DECRYPTION_FAILED:Invalid key or corrupted data" };
       }

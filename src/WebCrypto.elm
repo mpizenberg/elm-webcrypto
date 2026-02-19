@@ -22,6 +22,7 @@ Wraps the browser's WebCrypto API as composable `ConcurrentTask` values.
 import ConcurrentTask exposing (ConcurrentTask)
 import Json.Decode as Decode
 import Json.Encode as Encode
+import WebCrypto.Internal as Internal
 
 
 {-| Errors that can occur during WebCrypto operations.
@@ -108,12 +109,7 @@ splitOnce sep str =
 -}
 sha256 : String -> ConcurrentTask Error String
 sha256 str =
-    ConcurrentTask.define
-        { function = "webcrypto:sha256hex"
-        , expect = ConcurrentTask.expectString
-        , errors = ConcurrentTask.expectErrors errorDecoder
-        , args = Encode.object [ ( "data", Encode.string str ) ]
-        }
+    sha256Hex (Internal.stringToBytes str)
 
 
 {-| Compute SHA-256 hash of raw bytes. Returns hex string.

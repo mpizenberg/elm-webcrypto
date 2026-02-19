@@ -1,5 +1,5 @@
 module WebCrypto.Signature exposing
-    ( SigningKeyPair, SerializedSigningKeyPair
+    ( SigningKeyPair, SerializedSigningKeyPair, serializedSigningKeyPairDecoder, encodeSerializedSigningKeyPair
     , generateSigningKeyPair, exportSigningKeyPair, importSigningKeyPair
     , sign, verify
     )
@@ -9,7 +9,7 @@ module WebCrypto.Signature exposing
 
 # Types
 
-@docs SigningKeyPair, SerializedSigningKeyPair
+@docs SigningKeyPair, SerializedSigningKeyPair, serializedSigningKeyPairDecoder, encodeSerializedSigningKeyPair
 
 
 # Key Management
@@ -43,6 +43,25 @@ type alias SerializedSigningKeyPair =
     }
 
 
+{-| JSON decoder for a serialized signing key pair.
+-}
+serializedSigningKeyPairDecoder : Decode.Decoder SerializedSigningKeyPair
+serializedSigningKeyPairDecoder =
+    Decode.map2 SerializedSigningKeyPair
+        (Decode.field "publicKey" Decode.string)
+        (Decode.field "privateKey" Decode.string)
+
+
+{-| JSON encoder for a serialized signing key pair.
+-}
+encodeSerializedSigningKeyPair : SerializedSigningKeyPair -> Encode.Value
+encodeSerializedSigningKeyPair skp =
+    Encode.object
+        [ ( "publicKey", Encode.string skp.publicKey )
+        , ( "privateKey", Encode.string skp.privateKey )
+        ]
+
+
 sigKeypairIdOf : SigningKeyPair -> String
 sigKeypairIdOf (SigningKeyPair id) =
     id
@@ -66,12 +85,7 @@ exportSigningKeyPair : SigningKeyPair -> ConcurrentTask WebCrypto.Error Serializ
 exportSigningKeyPair skp =
     ConcurrentTask.define
         { function = "webcrypto:sig:export"
-        , expect =
-            ConcurrentTask.expectJson
-                (Decode.map2 SerializedSigningKeyPair
-                    (Decode.field "publicKey" Decode.string)
-                    (Decode.field "privateKey" Decode.string)
-                )
+        , expect = ConcurrentTask.expectJson serializedSigningKeyPairDecoder
         , errors = ConcurrentTask.expectErrors WebCrypto.errorDecoder
         , args =
             Encode.object
