@@ -1,6 +1,6 @@
 module WebCrypto.KeyPair exposing
     ( KeyPair, SerializedKeyPair, serializedKeyPairDecoder, encodeSerializedKeyPair
-    , generateKeyPair, exportKeyPair, importKeyPair, importPublicKey
+    , generateKeyPair, exportKeyPair, importKeyPair
     , publicKeyHash, deriveSharedKey
     )
 
@@ -14,7 +14,7 @@ module WebCrypto.KeyPair exposing
 
 # Key Management
 
-@docs generateKeyPair, exportKeyPair, importKeyPair, importPublicKey
+@docs generateKeyPair, exportKeyPair, importKeyPair
 
 
 # Operations
@@ -30,10 +30,12 @@ import WebCrypto
 import WebCrypto.Symmetric as Symmetric
 
 
-{-| Opaque handle to an ECDH key pair stored in JS.
+{-| Opaque handle to an ECDH key pair.
+Wraps the JWK-serialized keys and public key hash.
+The actual `CryptoKey` objects are re-imported on the JS side for each operation.
 -}
 type KeyPair
-    = KeyPair String
+    = KeyPair SerializedKeyPair
 
 
 {-| Serialized key pair for storage. Both keys are JWK JSON strings.
@@ -66,18 +68,14 @@ encodeSerializedKeyPair skp =
         ]
 
 
-keypairIdOf : KeyPair -> String
-keypairIdOf (KeyPair id) =
-    id
-
-
 {-| Generate a new ECDH P-256 key pair.
+Also computes the public key hash (SHA-256 of raw public key bytes).
 -}
 generateKeyPair : ConcurrentTask Never KeyPair
 generateKeyPair =
     ConcurrentTask.define
         { function = "webcrypto:kp:generate"
-        , expect = ConcurrentTask.expectJson (Decode.map KeyPair Decode.string)
+        , expect = ConcurrentTask.expectJson (Decode.map KeyPair serializedKeyPairDecoder)
         , errors = ConcurrentTask.expectNoErrors
         , args = Encode.null
         }
@@ -85,47 +83,24 @@ generateKeyPair =
 
 {-| Export a key pair to JWK strings + public key hash.
 -}
-exportKeyPair : KeyPair -> ConcurrentTask WebCrypto.Error SerializedKeyPair
-exportKeyPair kp =
-    ConcurrentTask.define
-        { function = "webcrypto:kp:export"
-        , expect = ConcurrentTask.expectJson serializedKeyPairDecoder
-        , errors = ConcurrentTask.expectErrors WebCrypto.errorDecoder
-        , args =
-            Encode.object
-                [ ( "keypairId", Encode.string (keypairIdOf kp) ) ]
-        }
+exportKeyPair : KeyPair -> SerializedKeyPair
+exportKeyPair (KeyPair skp) =
+    skp
 
 
 {-| Import a key pair from JWK strings.
 -}
-importKeyPair : SerializedKeyPair -> ConcurrentTask WebCrypto.Error KeyPair
-importKeyPair serialized =
-    ConcurrentTask.define
-        { function = "webcrypto:kp:import"
-        , expect = ConcurrentTask.expectJson (Decode.map KeyPair Decode.string)
-        , errors = ConcurrentTask.expectErrors WebCrypto.errorDecoder
-        , args =
-            Encode.object
-                [ ( "publicKey", Encode.string serialized.publicKey )
-                , ( "privateKey", Encode.string serialized.privateKey )
-                ]
-        }
+importKeyPair : SerializedKeyPair -> KeyPair
+importKeyPair =
+    KeyPair
 
 
-{-| Compute the SHA-256 hash of a public key (hex string).
+{-| Get the SHA-256 hash of the public key (hex string).
 This is the user's identity in partage.
 -}
-publicKeyHash : KeyPair -> ConcurrentTask WebCrypto.Error String
-publicKeyHash kp =
-    ConcurrentTask.define
-        { function = "webcrypto:kp:publicKeyHash"
-        , expect = ConcurrentTask.expectString
-        , errors = ConcurrentTask.expectErrors WebCrypto.errorDecoder
-        , args =
-            Encode.object
-                [ ( "keypairId", Encode.string (keypairIdOf kp) ) ]
-        }
+publicKeyHash : KeyPair -> String
+publicKeyHash (KeyPair skp) =
+    skp.publicKeyHash
 
 
 {-| Derive a shared AES-256-GCM key from my private key and another's public key.
@@ -135,27 +110,18 @@ deriveSharedKey :
     { myKeyPair : KeyPair, otherPublicKey : String }
     -> ConcurrentTask WebCrypto.Error Symmetric.Key
 deriveSharedKey { myKeyPair, otherPublicKey } =
+    let
+        skp =
+            exportKeyPair myKeyPair
+    in
     ConcurrentTask.define
         { function = "webcrypto:kp:deriveSharedKey"
-        , expect = ConcurrentTask.expectJson Symmetric.keyDecoder
+        , expect = ConcurrentTask.expectString
         , errors = ConcurrentTask.expectErrors WebCrypto.errorDecoder
         , args =
             Encode.object
-                [ ( "myKeypairId", Encode.string (keypairIdOf myKeyPair) )
+                [ ( "myPrivateKeyJwk", Encode.string skp.privateKey )
                 , ( "otherPublicKeyJwk", Encode.string otherPublicKey )
                 ]
         }
-
-
-{-| Import a public key from a JWK string (for verification or key agreement).
--}
-importPublicKey : String -> ConcurrentTask WebCrypto.Error KeyPair
-importPublicKey publicKeyJwk =
-    ConcurrentTask.define
-        { function = "webcrypto:kp:importPublicKey"
-        , expect = ConcurrentTask.expectJson (Decode.map KeyPair Decode.string)
-        , errors = ConcurrentTask.expectErrors WebCrypto.errorDecoder
-        , args =
-            Encode.object
-                [ ( "publicKeyJwk", Encode.string publicKeyJwk ) ]
-        }
+        |> ConcurrentTask.map Symmetric.importKey

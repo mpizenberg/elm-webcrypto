@@ -42,8 +42,9 @@ import WebCrypto
 import WebCrypto.Internal as Internal
 
 
-{-| Opaque handle to an AES-256-GCM key stored in JS.
-Cannot be inspected from Elm -- only used as a parameter to crypto operations.
+{-| Opaque handle to an AES-256-GCM key.
+Wraps the Base64-encoded raw key bytes. The actual `CryptoKey` object
+is re-imported on the JS side for each operation.
 -}
 type Key
     = Key String
@@ -77,17 +78,12 @@ encodeEncryptedData data =
         ]
 
 
-{-| JSON decoder for a symmetric key handle.
-Decodes the string ID returned by JS key operations.
+{-| JSON decoder for a symmetric key.
+Decodes a Base64 string into a Key.
 -}
 keyDecoder : Decode.Decoder Key
 keyDecoder =
     Decode.map Key Decode.string
-
-
-keyIdOf : Key -> String
-keyIdOf (Key id) =
-    id
 
 
 {-| Generate a new random AES-256-GCM key.
@@ -96,10 +92,25 @@ generateKey : ConcurrentTask Never Key
 generateKey =
     ConcurrentTask.define
         { function = "webcrypto:sym:generateKey"
-        , expect = ConcurrentTask.expectJson (Decode.map Key Decode.string)
+        , expect = ConcurrentTask.expectString
         , errors = ConcurrentTask.expectNoErrors
         , args = Encode.null
         }
+        |> ConcurrentTask.map Key
+
+
+{-| Export a key to a Base64 string for storage (e.g. in IndexedDB).
+-}
+exportKey : Key -> String
+exportKey (Key base64) =
+    base64
+
+
+{-| Import a key from a Base64 string.
+-}
+importKey : String -> Key
+importKey =
+    Key
 
 
 {-| Encrypt raw bytes with AES-256-GCM.
@@ -113,7 +124,7 @@ encrypt key data =
         , errors = ConcurrentTask.expectErrors WebCrypto.errorDecoder
         , args =
             Encode.object
-                [ ( "keyId", Encode.string (keyIdOf key) )
+                [ ( "key", Encode.string (exportKey key) )
                 , ( "data", Encode.list Encode.int data )
                 ]
         }
@@ -130,7 +141,7 @@ decrypt key encrypted =
         , errors = ConcurrentTask.expectErrors WebCrypto.errorDecoder
         , args =
             Encode.object
-                [ ( "keyId", Encode.string (keyIdOf key) )
+                [ ( "key", Encode.string (exportKey key) )
                 , ( "ciphertext", Encode.string encrypted.ciphertext )
                 , ( "iv", Encode.string encrypted.iv )
                 ]
@@ -182,31 +193,3 @@ decryptJson key decoder encrypted =
                     Err err ->
                         ConcurrentTask.fail (WebCrypto.DecryptionFailed ("JSON decode error: " ++ Decode.errorToString err))
             )
-
-
-{-| Export a key to a Base64 string for storage (e.g. in IndexedDB).
--}
-exportKey : Key -> ConcurrentTask WebCrypto.Error String
-exportKey key =
-    ConcurrentTask.define
-        { function = "webcrypto:sym:exportKey"
-        , expect = ConcurrentTask.expectString
-        , errors = ConcurrentTask.expectErrors WebCrypto.errorDecoder
-        , args =
-            Encode.object
-                [ ( "keyId", Encode.string (keyIdOf key) ) ]
-        }
-
-
-{-| Import a key from a Base64 string.
--}
-importKey : String -> ConcurrentTask WebCrypto.Error Key
-importKey base64 =
-    ConcurrentTask.define
-        { function = "webcrypto:sym:importKey"
-        , expect = ConcurrentTask.expectJson (Decode.map Key Decode.string)
-        , errors = ConcurrentTask.expectErrors WebCrypto.errorDecoder
-        , args =
-            Encode.object
-                [ ( "base64", Encode.string base64 ) ]
-        }

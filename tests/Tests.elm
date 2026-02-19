@@ -1,10 +1,9 @@
 module Tests exposing (suite)
 
 import Expect
-import Json.Decode as Decode
-import Json.Encode as Encode
-import Test exposing (Test, describe, fuzz, test)
 import Fuzz
+import Json.Decode as Decode
+import Test exposing (Test, describe, fuzz, test)
 import WebCrypto
 import WebCrypto.Internal as Internal
 import WebCrypto.KeyPair as KeyPair
@@ -18,8 +17,11 @@ suite =
     describe "elm-webcrypto pure functions"
         [ utf8Tests
         , errorDecoderTests
+        , symmetricKeyTests
         , encryptedDataCodecTests
+        , keyPairTests
         , serializedKeyPairCodecTests
+        , signingKeyPairTests
         , serializedSigningKeyPairCodecTests
         , challengeDecoderTests
         , solutionEncoderTests
@@ -147,6 +149,31 @@ errorDecoderTests =
 
 
 
+-- Symmetric Key (pure export/import)
+
+
+symmetricKeyTests : Test
+symmetricKeyTests =
+    describe "Symmetric.Key export/import"
+        [ test "round-trip" <|
+            \_ ->
+                Symmetric.importKey "dGVzdGtleQ=="
+                    |> Symmetric.exportKey
+                    |> Expect.equal "dGVzdGtleQ=="
+        , fuzz Fuzz.string "round-trip for any base64 string" <|
+            \str ->
+                Symmetric.importKey str
+                    |> Symmetric.exportKey
+                    |> Expect.equal str
+        , test "keyDecoder produces same result as importKey" <|
+            \_ ->
+                Decode.decodeString Symmetric.keyDecoder "\"abc123\""
+                    |> Result.map Symmetric.exportKey
+                    |> Expect.equal (Ok "abc123")
+        ]
+
+
+
 -- EncryptedData codec
 
 
@@ -191,6 +218,37 @@ encryptedDataCodecTests =
 
 
 
+-- KeyPair (pure export/import/publicKeyHash)
+
+
+keyPairTests : Test
+keyPairTests =
+    describe "KeyPair export/import/publicKeyHash"
+        [ test "round-trip" <|
+            \_ ->
+                let
+                    skp =
+                        { publicKey = "pub"
+                        , privateKey = "priv"
+                        , publicKeyHash = "hash123"
+                        }
+                in
+                KeyPair.importKeyPair skp
+                    |> KeyPair.exportKeyPair
+                    |> Expect.equal skp
+        , test "publicKeyHash extracts hash" <|
+            \_ ->
+                { publicKey = "pub"
+                , privateKey = "priv"
+                , publicKeyHash = "abcdef"
+                }
+                    |> KeyPair.importKeyPair
+                    |> KeyPair.publicKeyHash
+                    |> Expect.equal "abcdef"
+        ]
+
+
+
 -- SerializedKeyPair codec
 
 
@@ -214,6 +272,27 @@ serializedKeyPairCodecTests =
                 """{"publicKey":"pk","privateKey":"sk"}"""
                     |> Decode.decodeString KeyPair.serializedKeyPairDecoder
                     |> Expect.err
+        ]
+
+
+
+-- SigningKeyPair (pure export/import)
+
+
+signingKeyPairTests : Test
+signingKeyPairTests =
+    describe "SigningKeyPair export/import"
+        [ test "round-trip" <|
+            \_ ->
+                let
+                    skp =
+                        { publicKey = "pub"
+                        , privateKey = "priv"
+                        }
+                in
+                Signature.importSigningKeyPair skp
+                    |> Signature.exportSigningKeyPair
+                    |> Expect.equal skp
         ]
 
 

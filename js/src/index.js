@@ -1,33 +1,10 @@
 // js/src/index.js
+//
+// Stateless WebCrypto task runners.
+// No Maps or closures -- key material is owned by Elm and
+// re-imported into CryptoKey objects on each operation.
 
 export function createTasks() {
-  const keys = new Map(); // keyId -> CryptoKey
-  const keypairs = new Map(); // keypairId -> { publicKey, privateKey }
-  const signingKeypairs = new Map();
-  let nextId = 0;
-
-  function newId() {
-    return String(nextId++);
-  }
-
-  function storeKey(key) {
-    const id = newId();
-    keys.set(id, key);
-    return id;
-  }
-
-  function getKey(id) {
-    const key = keys.get(id);
-    if (!key) return { error: "INVALID_KEY:Key not found" };
-    return key;
-  }
-
-  function storeKeypair(kp) {
-    const id = newId();
-    keypairs.set(id, kp);
-    return id;
-  }
-
   // --- Helpers ---
 
   function toBase64(uint8array) {
@@ -38,10 +15,18 @@ export function createTasks() {
     return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
   }
 
-  async function rawPublicKeyHash(publicKey) {
-    const rawBytes = await crypto.subtle.exportKey("raw", publicKey);
-    const hashBuffer = await crypto.subtle.digest("SHA-256", rawBytes);
-    return Array.from(new Uint8Array(hashBuffer))
+  function importAesKey(base64) {
+    return crypto.subtle.importKey(
+      "raw",
+      fromBase64(base64),
+      { name: "AES-GCM", length: 256 },
+      true,
+      ["encrypt", "decrypt"],
+    );
+  }
+
+  function toHex(uint8array) {
+    return Array.from(uint8array)
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
   }
@@ -55,9 +40,7 @@ export function createTasks() {
           "SHA-256",
           new Uint8Array(data),
         );
-        return Array.from(new Uint8Array(hashBuffer))
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join("");
+        return toHex(new Uint8Array(hashBuffer));
       } catch (e) {
         return { error: "HASHING_FAILED:" + e.message };
       }
@@ -71,19 +54,18 @@ export function createTasks() {
         true,
         ["encrypt", "decrypt"],
       );
-      return storeKey(key);
+      const exported = await crypto.subtle.exportKey("raw", key);
+      return toBase64(new Uint8Array(exported));
     },
 
-    "webcrypto:sym:encrypt": async ({ keyId, data }) => {
-      const key = getKey(keyId);
-      if (key.error) return key;
+    "webcrypto:sym:encrypt": async ({ key, data }) => {
       try {
+        const cryptoKey = await importAesKey(key);
         const iv = crypto.getRandomValues(new Uint8Array(12));
-        const plaintext = new Uint8Array(data);
         const ciphertextBuffer = await crypto.subtle.encrypt(
           { name: "AES-GCM", iv },
-          key,
-          plaintext,
+          cryptoKey,
+          new Uint8Array(data),
         );
         return {
           ciphertext: toBase64(new Uint8Array(ciphertextBuffer)),
@@ -94,45 +76,17 @@ export function createTasks() {
       }
     },
 
-    "webcrypto:sym:decrypt": async ({ keyId, ciphertext, iv }) => {
-      const key = getKey(keyId);
-      if (key.error) return key;
+    "webcrypto:sym:decrypt": async ({ key, ciphertext, iv }) => {
       try {
+        const cryptoKey = await importAesKey(key);
         const decrypted = await crypto.subtle.decrypt(
           { name: "AES-GCM", iv: fromBase64(iv) },
-          key,
+          cryptoKey,
           fromBase64(ciphertext),
         );
         return Array.from(new Uint8Array(decrypted));
       } catch (e) {
         return { error: "DECRYPTION_FAILED:Invalid key or corrupted data" };
-      }
-    },
-
-    "webcrypto:sym:exportKey": async ({ keyId }) => {
-      const key = getKey(keyId);
-      if (key.error) return key;
-      try {
-        const exported = await crypto.subtle.exportKey("raw", key);
-        return toBase64(new Uint8Array(exported));
-      } catch (e) {
-        return { error: "KEY_EXPORT_FAILED:" + e.message };
-      }
-    },
-
-    "webcrypto:sym:importKey": async ({ base64 }) => {
-      try {
-        const keyData = fromBase64(base64);
-        const key = await crypto.subtle.importKey(
-          "raw",
-          keyData,
-          { name: "AES-GCM", length: 256 },
-          true,
-          ["encrypt", "decrypt"],
-        );
-        return storeKey(key);
-      } catch (e) {
-        return { error: "KEY_IMPORT_FAILED:" + e.message };
       }
     },
 
@@ -144,61 +98,29 @@ export function createTasks() {
         true,
         ["deriveKey"],
       );
-      return storeKeypair(kp);
+      const pubJwk = await crypto.subtle.exportKey("jwk", kp.publicKey);
+      const privJwk = await crypto.subtle.exportKey("jwk", kp.privateKey);
+      const rawBytes = await crypto.subtle.exportKey("raw", kp.publicKey);
+      const hashBuffer = await crypto.subtle.digest("SHA-256", rawBytes);
+      return {
+        publicKey: JSON.stringify(pubJwk),
+        privateKey: JSON.stringify(privJwk),
+        publicKeyHash: toHex(new Uint8Array(hashBuffer)),
+      };
     },
 
-    "webcrypto:kp:export": async ({ keypairId }) => {
-      const kp = keypairs.get(keypairId);
-      if (!kp) return { error: "INVALID_KEY:KeyPair not found" };
+    "webcrypto:kp:deriveSharedKey": async ({
+      myPrivateKeyJwk,
+      otherPublicKeyJwk,
+    }) => {
       try {
-        const pubJwk = await crypto.subtle.exportKey("jwk", kp.publicKey);
-        const privJwk = await crypto.subtle.exportKey("jwk", kp.privateKey);
-        const hash = await rawPublicKeyHash(kp.publicKey);
-        return {
-          publicKey: JSON.stringify(pubJwk),
-          privateKey: JSON.stringify(privJwk),
-          publicKeyHash: hash,
-        };
-      } catch (e) {
-        return { error: "KEY_EXPORT_FAILED:" + e.message };
-      }
-    },
-
-    "webcrypto:kp:import": async ({ publicKey, privateKey }) => {
-      try {
-        const pubKey = await crypto.subtle.importKey(
+        const myPrivKey = await crypto.subtle.importKey(
           "jwk",
-          JSON.parse(publicKey),
-          { name: "ECDH", namedCurve: "P-256" },
-          true,
-          [],
-        );
-        const privKey = await crypto.subtle.importKey(
-          "jwk",
-          JSON.parse(privateKey),
+          JSON.parse(myPrivateKeyJwk),
           { name: "ECDH", namedCurve: "P-256" },
           true,
           ["deriveKey"],
         );
-        return storeKeypair({ publicKey: pubKey, privateKey: privKey });
-      } catch (e) {
-        return { error: "KEY_IMPORT_FAILED:" + e.message };
-      }
-    },
-
-    "webcrypto:kp:publicKeyHash": async ({ keypairId }) => {
-      const kp = keypairs.get(keypairId);
-      if (!kp) return { error: "INVALID_KEY:KeyPair not found" };
-      return await rawPublicKeyHash(kp.publicKey);
-    },
-
-    "webcrypto:kp:deriveSharedKey": async ({
-      myKeypairId,
-      otherPublicKeyJwk,
-    }) => {
-      const kp = keypairs.get(myKeypairId);
-      if (!kp) return { error: "INVALID_KEY:KeyPair not found" };
-      try {
         const otherPub = await crypto.subtle.importKey(
           "jwk",
           JSON.parse(otherPublicKeyJwk),
@@ -208,32 +130,15 @@ export function createTasks() {
         );
         const sharedKey = await crypto.subtle.deriveKey(
           { name: "ECDH", public: otherPub },
-          kp.privateKey,
+          myPrivKey,
           { name: "AES-GCM", length: 256 },
           true,
           ["encrypt", "decrypt"],
         );
-        return storeKey(sharedKey);
+        const exported = await crypto.subtle.exportKey("raw", sharedKey);
+        return toBase64(new Uint8Array(exported));
       } catch (e) {
         return { error: "KEY_DERIVATION_FAILED:" + e.message };
-      }
-    },
-
-    "webcrypto:kp:importPublicKey": async ({ publicKeyJwk }) => {
-      try {
-        const pubKey = await crypto.subtle.importKey(
-          "jwk",
-          JSON.parse(publicKeyJwk),
-          { name: "ECDH", namedCurve: "P-256" },
-          true,
-          [],
-        );
-        // Store as a keypair with only a public key (no private key)
-        const id = newId();
-        keypairs.set(id, { publicKey: pubKey, privateKey: null });
-        return id;
-      } catch (e) {
-        return { error: "KEY_IMPORT_FAILED:" + e.message };
       }
     },
 
@@ -245,57 +150,26 @@ export function createTasks() {
         true,
         ["sign", "verify"],
       );
-      const id = newId();
-      signingKeypairs.set(id, kp);
-      return id;
+      const pubJwk = await crypto.subtle.exportKey("jwk", kp.publicKey);
+      const privJwk = await crypto.subtle.exportKey("jwk", kp.privateKey);
+      return {
+        publicKey: JSON.stringify(pubJwk),
+        privateKey: JSON.stringify(privJwk),
+      };
     },
 
-    "webcrypto:sig:export": async ({ sigKeypairId }) => {
-      const kp = signingKeypairs.get(sigKeypairId);
-      if (!kp) return { error: "INVALID_KEY:SigningKeyPair not found" };
+    "webcrypto:sig:sign": async ({ privateKeyJwk, data }) => {
       try {
-        const pubJwk = await crypto.subtle.exportKey("jwk", kp.publicKey);
-        const privJwk = await crypto.subtle.exportKey("jwk", kp.privateKey);
-        return {
-          publicKey: JSON.stringify(pubJwk),
-          privateKey: JSON.stringify(privJwk),
-        };
-      } catch (e) {
-        return { error: "KEY_EXPORT_FAILED:" + e.message };
-      }
-    },
-
-    "webcrypto:sig:import": async ({ publicKey, privateKey }) => {
-      try {
-        const pubKey = await crypto.subtle.importKey(
-          "jwk",
-          JSON.parse(publicKey),
-          { name: "ECDSA", namedCurve: "P-256" },
-          true,
-          ["verify"],
-        );
         const privKey = await crypto.subtle.importKey(
           "jwk",
-          JSON.parse(privateKey),
+          JSON.parse(privateKeyJwk),
           { name: "ECDSA", namedCurve: "P-256" },
           true,
           ["sign"],
         );
-        const id = newId();
-        signingKeypairs.set(id, { publicKey: pubKey, privateKey: privKey });
-        return id;
-      } catch (e) {
-        return { error: "KEY_IMPORT_FAILED:" + e.message };
-      }
-    },
-
-    "webcrypto:sig:sign": async ({ sigKeypairId, data }) => {
-      const kp = signingKeypairs.get(sigKeypairId);
-      if (!kp) return { error: "INVALID_KEY:SigningKeyPair not found" };
-      try {
         const signature = await crypto.subtle.sign(
           { name: "ECDSA", hash: "SHA-256" },
-          kp.privateKey,
+          privKey,
           new Uint8Array(data),
         );
         return toBase64(new Uint8Array(signature));

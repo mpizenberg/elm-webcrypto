@@ -29,10 +29,12 @@ import Json.Encode as Encode
 import WebCrypto
 
 
-{-| Opaque handle to an ECDSA signing key pair stored in JS.
+{-| Opaque handle to an ECDSA signing key pair.
+Wraps the JWK-serialized keys.
+The actual `CryptoKey` objects are re-imported on the JS side for each operation.
 -}
 type SigningKeyPair
-    = SigningKeyPair String
+    = SigningKeyPair SerializedSigningKeyPair
 
 
 {-| Serialized signing key pair for storage.
@@ -62,18 +64,13 @@ encodeSerializedSigningKeyPair skp =
         ]
 
 
-sigKeypairIdOf : SigningKeyPair -> String
-sigKeypairIdOf (SigningKeyPair id) =
-    id
-
-
 {-| Generate a new ECDSA P-256 key pair for signing/verification.
 -}
 generateSigningKeyPair : ConcurrentTask Never SigningKeyPair
 generateSigningKeyPair =
     ConcurrentTask.define
         { function = "webcrypto:sig:generate"
-        , expect = ConcurrentTask.expectJson (Decode.map SigningKeyPair Decode.string)
+        , expect = ConcurrentTask.expectJson (Decode.map SigningKeyPair serializedSigningKeyPairDecoder)
         , errors = ConcurrentTask.expectNoErrors
         , args = Encode.null
         }
@@ -81,45 +78,33 @@ generateSigningKeyPair =
 
 {-| Export a signing key pair to JWK strings.
 -}
-exportSigningKeyPair : SigningKeyPair -> ConcurrentTask WebCrypto.Error SerializedSigningKeyPair
-exportSigningKeyPair skp =
-    ConcurrentTask.define
-        { function = "webcrypto:sig:export"
-        , expect = ConcurrentTask.expectJson serializedSigningKeyPairDecoder
-        , errors = ConcurrentTask.expectErrors WebCrypto.errorDecoder
-        , args =
-            Encode.object
-                [ ( "sigKeypairId", Encode.string (sigKeypairIdOf skp) ) ]
-        }
+exportSigningKeyPair : SigningKeyPair -> SerializedSigningKeyPair
+exportSigningKeyPair (SigningKeyPair skp) =
+    skp
 
 
 {-| Import a signing key pair from JWK strings.
 -}
-importSigningKeyPair : SerializedSigningKeyPair -> ConcurrentTask WebCrypto.Error SigningKeyPair
-importSigningKeyPair serialized =
-    ConcurrentTask.define
-        { function = "webcrypto:sig:import"
-        , expect = ConcurrentTask.expectJson (Decode.map SigningKeyPair Decode.string)
-        , errors = ConcurrentTask.expectErrors WebCrypto.errorDecoder
-        , args =
-            Encode.object
-                [ ( "publicKey", Encode.string serialized.publicKey )
-                , ( "privateKey", Encode.string serialized.privateKey )
-                ]
-        }
+importSigningKeyPair : SerializedSigningKeyPair -> SigningKeyPair
+importSigningKeyPair =
+    SigningKeyPair
 
 
 {-| Sign data with the private key. Returns the signature as a Base64 string.
 -}
 sign : SigningKeyPair -> List Int -> ConcurrentTask WebCrypto.Error String
 sign skp data =
+    let
+        serialized =
+            exportSigningKeyPair skp
+    in
     ConcurrentTask.define
         { function = "webcrypto:sig:sign"
         , expect = ConcurrentTask.expectString
         , errors = ConcurrentTask.expectErrors WebCrypto.errorDecoder
         , args =
             Encode.object
-                [ ( "sigKeypairId", Encode.string (sigKeypairIdOf skp) )
+                [ ( "privateKeyJwk", Encode.string serialized.privateKey )
                 , ( "data", Encode.list Encode.int data )
                 ]
         }
