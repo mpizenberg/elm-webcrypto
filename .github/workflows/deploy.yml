@@ -1,0 +1,64 @@
+name: Deploy to GitHub Pages
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  ELM_HOME: ~/.elm
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "lts/*"
+
+      - run: npm ci
+        env:
+          NO_ELM_TOOLING_INSTALL: 1
+
+      - name: Cache ELM_HOME
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.ELM_HOME }}
+          key: elm-${{ hashFiles('elm.json', 'elm-tooling.json', 'review/elm.json') }}
+          restore-keys: elm-
+
+      - run: npx elm-tooling install
+
+      - name: Install example deps
+        run: npm ci
+        working-directory: example
+
+      - name: Build Elm
+        run: npx elm make src/Main.elm --optimize --output=static/elm.js
+        working-directory: example
+
+      - name: Bundle JS
+        run: npx esbuild src/index.js --bundle --minify --outfile=static/main.js
+        working-directory: example
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: example/static/
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

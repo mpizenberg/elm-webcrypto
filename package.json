@@ -1,6 +1,27 @@
 {
   "name": "elm-webcrypto",
   "version": "1.0.0",
+  "description": "Web crypto support for Elm via elm-concurrent-task",
+  "keywords": [
+    "elm",
+    "webcrypto"
+  ],
+  "license": "BSD-3-Clause",
+  "author": "mpizenberg",
+  "type": "module",
   "main": "js/src/index.js",
-  "type": "module"
+  "exports": "./js/src/index.js",
+  "files": [
+    "js/src"
+  ],
+  "peerDependencies": {
+    "@andrewmacmurray/elm-concurrent-task": "^2.0.0"
+  },
+  "scripts": {
+    "postinstall": "elm-tooling install"
+  },
+  "devDependencies": {
+    "elm-review": "^2.13.5",
+    "elm-tooling": "^1.15.1"
+  }
 }
