@@ -113,6 +113,6 @@ deriveAndEncrypt myKeyPair otherPublicKeyJwk message =
 
 **Elm-owned keys, stateless JS.** `Key`, `KeyPair`, and `SigningKeyPair` are opaque types holding serialized key material (Base64 or JWK). There is no JS-side state -- keys are re-imported into `CryptoKey` objects on each operation. This means `exportKey`/`importKey`, `exportKeyPair`/`importKeyPair`, `exportSigningKeyPair`/`importSigningKeyPair`, and `publicKeyHash` are all pure Elm functions.
 
-**Pure Elm where possible.** String/JSON encryption and decryption, UTF-8 encoding, key serialization, and all JSON codecs are pure Elm -- only the raw crypto operations (generate, encrypt, decrypt, sign, verify, hash, PoW) call into JS.
+**Pure Elm where possible.** UTF-8 encoding, key serialization, and all JSON codecs are pure Elm -- only the raw crypto operations (generate, encrypt, decrypt, sign, verify, hash, PoW) call into JS.
 
 **Flat error type.** All operations share a single `WebCrypto.Error` type. Errors carry a descriptive message from the JS side.
