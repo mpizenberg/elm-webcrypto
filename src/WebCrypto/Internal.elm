@@ -1,4 +1,4 @@
-module WebCrypto.Internal exposing (stringToBytes, bytesToString)
+module WebCrypto.Internal exposing (bytesToString, stringToBytes)
 
 {-| Internal UTF-8 conversion helpers using elm/bytes.
 

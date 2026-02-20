@@ -1,6 +1,5 @@
 module WebCrypto.ProofOfWork exposing
-    ( Challenge, challengeDecoder
-    , Solution, encodeSolution
+    ( Challenge, challengeDecoder, Solution, encodeSolution
     , solveChallenge
     )
 
