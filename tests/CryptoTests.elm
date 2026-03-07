@@ -1,4 +1,4 @@
-module Tests exposing (suite)
+module CryptoTests exposing (suite)
 
 import Expect
 import Fuzz
