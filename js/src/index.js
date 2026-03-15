@@ -198,6 +198,46 @@ export function createTasks() {
       }
     },
 
+    "webcrypto:sig:signText": async ({ privateKeyJwk, text }) => {
+      try {
+        const privKey = await crypto.subtle.importKey(
+          "jwk",
+          JSON.parse(privateKeyJwk),
+          { name: "ECDSA", namedCurve: "P-256" },
+          true,
+          ["sign"],
+        );
+        const signature = await crypto.subtle.sign(
+          { name: "ECDSA", hash: "SHA-256" },
+          privKey,
+          new TextEncoder().encode(text),
+        );
+        return toBase64(new Uint8Array(signature));
+      } catch (e) {
+        return { error: "SIGNING_FAILED:" + e.message };
+      }
+    },
+
+    "webcrypto:sig:verifyText": async ({ publicKeyJwk, signature, text }) => {
+      try {
+        const pubKey = await crypto.subtle.importKey(
+          "jwk",
+          JSON.parse(publicKeyJwk),
+          { name: "ECDSA", namedCurve: "P-256" },
+          true,
+          ["verify"],
+        );
+        return await crypto.subtle.verify(
+          { name: "ECDSA", hash: "SHA-256" },
+          pubKey,
+          fromBase64(signature),
+          new TextEncoder().encode(text),
+        );
+      } catch (e) {
+        return { error: "VERIFICATION_FAILED:" + e.message };
+      }
+    },
+
     // --- Proof of Work ---
 
     "webcrypto:pow:solve": ({ challenge, difficulty }) => {

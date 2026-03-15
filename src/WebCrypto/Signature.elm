@@ -2,6 +2,7 @@ module WebCrypto.Signature exposing
     ( SigningKeyPair, SerializedSigningKeyPair, serializedSigningKeyPairDecoder, encodeSerializedSigningKeyPair
     , generateSigningKeyPair, exportSigningKeyPair, importSigningKeyPair
     , sign, verify
+    , signText, verifyText
     )
 
 {-| ECDSA P-256 digital signatures via WebCrypto.
@@ -19,7 +20,7 @@ module WebCrypto.Signature exposing
 
 # Operations
 
-@docs sign, verify
+@docs sign, verify, signText, verifyText
 
 -}
 
@@ -125,5 +126,46 @@ verify publicKeyJwk signature data =
                 [ ( "publicKeyJwk", Encode.string publicKeyJwk )
                 , ( "signature", Encode.string signature )
                 , ( "data", Encode.list Encode.int data )
+                ]
+        }
+
+
+{-| Sign a text string with the private key. Returns the signature as a Base64 string.
+The text is converted to bytes using TextEncoder on the JS side.
+-}
+signText : SigningKeyPair -> String -> ConcurrentTask WebCrypto.Error String
+signText skp text =
+    let
+        serialized : SerializedSigningKeyPair
+        serialized =
+            exportSigningKeyPair skp
+    in
+    ConcurrentTask.define
+        { function = "webcrypto:sig:signText"
+        , expect = ConcurrentTask.expectString
+        , errors = ConcurrentTask.expectErrors WebCrypto.errorDecoder
+        , args =
+            Encode.object
+                [ ( "privateKeyJwk", Encode.string serialized.privateKey )
+                , ( "text", Encode.string text )
+                ]
+        }
+
+
+{-| Verify a signature against a text string and a public key (JWK string).
+The text is converted to bytes using TextEncoder on the JS side.
+Returns True if the signature is valid.
+-}
+verifyText : String -> String -> String -> ConcurrentTask WebCrypto.Error Bool
+verifyText publicKeyJwk signature text =
+    ConcurrentTask.define
+        { function = "webcrypto:sig:verifyText"
+        , expect = ConcurrentTask.expectJson Decode.bool
+        , errors = ConcurrentTask.expectErrors WebCrypto.errorDecoder
+        , args =
+            Encode.object
+                [ ( "publicKeyJwk", Encode.string publicKeyJwk )
+                , ( "signature", Encode.string signature )
+                , ( "text", Encode.string text )
                 ]
         }
