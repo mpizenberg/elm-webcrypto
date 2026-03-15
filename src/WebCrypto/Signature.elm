@@ -1,8 +1,7 @@
 module WebCrypto.Signature exposing
     ( SigningKeyPair, SerializedSigningKeyPair, serializedSigningKeyPairDecoder, encodeSerializedSigningKeyPair
     , generateSigningKeyPair, exportSigningKeyPair, importSigningKeyPair
-    , sign, verify
-    , signText, verifyText
+    , sign, verify, signText, verifyText
     )
 
 {-| ECDSA P-256 digital signatures via WebCrypto.
